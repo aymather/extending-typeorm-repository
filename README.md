@@ -1,73 +1,126 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="200" alt="Nest Logo" /></a>
-</p>
+# NestJS TypeORM Extended Repository Example
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+This repository demonstrates how to properly extend a TypeORM repository in a NestJS application. It shows how to create custom repository methods, inject and use them in services, and share them across different modules.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://coveralls.io/github/nestjs/nest?branch=master" target="_blank"><img src="https://coveralls.io/repos/github/nestjs/nest/badge.svg?branch=master#9" alt="Coverage" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## How to Run This Repository
 
-## Description
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/aymather/extending-typeorm-repository
+   cd extending-typeorm-repository
+   ```
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+2. Install dependencies:
+   ```bash
+   yarn install
+   ```
 
-## Installation
+3. Set up your database connection in `<PROJECT ROOT>/src/app.module.ts` or in a `.env` file.
 
-```bash
-$ yarn install
+4. Run the application:
+   ```bash
+   yarn start:dev
+   ```
+
+## How to Properly Extend a Repository
+
+1. Create a file for your extended repository (e.g., `user.repository.ts`):
+
+```typescript
+import { Repository } from 'typeorm';
+import { User } from './user.entity';
+
+export interface ExtendedUserRepository extends Repository<User> {
+  findByUsername(username: string): Promise<User | undefined>;
+  findByEmail(email: string): Promise<User | undefined>;
+}
+
+export const extendedUserRepository = {
+  findByUsername(this: Repository<User>, username: string) {
+    return this.findOne({ where: { username } });
+  },
+  findByEmail(this: Repository<User>, email: string) {
+    return this.findOne({ where: { email } });
+  }
+};
 ```
 
-## Running the app
+## How to Inject and Extend the Repository in a Service
 
-```bash
-# development
-$ yarn run start
+In your service file (e.g., `user.service.ts`):
 
-# watch mode
-$ yarn run start:dev
+```typescript
+import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { User } from './user.entity';
+import { extendedUserRepository, ExtendedUserRepository } from './user.repository';
 
-# production mode
-$ yarn run start:prod
+@Injectable()
+export class UserService {
+  private userRepository: ExtendedUserRepository;
+
+  constructor(
+    @InjectRepository(User)
+    private readonly repository: Repository<User>
+  ) {
+    this.userRepository = this.repository.extend(extendedUserRepository);
+  }
+
+  // Use this.userRepository to access custom methods
+}
 ```
 
-## Test
+## How to Use the Extended Repository in a Different Module
 
-```bash
-# unit tests
-$ yarn run test
+1. Make sure to import the regular entity in the module where you want to use it just like you would with a regular repository:
 
-# e2e tests
-$ yarn run test:e2e
+```typescript
+// artist.module.ts
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { User } from 'src/user/user.entity';
+import { ArtistController } from './artist.controller';
+import { ArtistService } from './artist.service';
 
-# test coverage
-$ yarn run test:cov
+@Module({
+  imports: [TypeOrmModule.forFeature([User])],
+  providers: [ArtistService],
+  controllers: [ArtistController]
+})
+export class ArtistModule {}
 ```
 
-## Support
+2. In the service of the different module, inject and extend the repository the same way you did in the original service:
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+```typescript
+// artist.service.ts
+import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { User } from 'src/user/user.entity';
+import { ExtendedUserRepository, extendedUserRepository } from 'src/user/user.repository';
+import { Repository } from 'typeorm';
 
-## Stay in touch
+@Injectable()
+export class ArtistService {
+  private userRepository: ExtendedUserRepository;
 
-- Author - [Kamil Myśliwiec](https://kamilmysliwiec.com)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+  constructor(
+    @InjectRepository(User)
+    private readonly repository: Repository<User>
+  ) {
+    this.userRepository = repository.extend(extendedUserRepository);
+  }
 
-## License
+  // Use this.userRepository to access custom methods
+}
+```
 
-Nest is [MIT licensed](LICENSE).
+## Key Points
+
+- The extended repository is defined using an interface and an object with method implementations.
+- The `extend` method is used to add custom methods to the repository instance.
+- Custom repository methods are available in any service where you inject and extend the repository.
+- To use the extended repository in a different module, import the entity in that module and inject/extend the repository in the service.
+
+This approach allows you to create reusable, type-safe repository extensions that can be shared across your NestJS application.
